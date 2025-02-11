@@ -32,6 +32,7 @@ logs/
 coverage/
 
 # Temporary files
-*.tmp
-*.temp
+tmp/
+temp/
 
+# Optional: Add project-specific ignores below 
