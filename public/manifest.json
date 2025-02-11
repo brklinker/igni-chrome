@@ -1,0 +1,22 @@
+{
+    "manifest_version": 3,
+    "name": "Igni",
+    "version": "1.0.0",
+    "description": "A shopping assistant.",
+    "permissions": ["contextMenus", "activeTab", "scripting", "storage"],
+    "background": {
+      "service_worker": "background.js",
+      "type": "module"
+    },
+    "host_permissions": [
+      "https://lens.google.com/*",
+      "https://www.google.com/*"
+    ],
+    "action": {
+      "default_popup": "index.html"
+    },
+    "web_accessible_resources": [{
+      "resources": ["content.js"],
+      "matches": ["<all_urls>"]
+    }]
+}
