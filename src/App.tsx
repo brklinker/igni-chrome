@@ -11,7 +11,15 @@ import { ComparisonPage } from './components/ComparisonPage';
 
 
 function App() {
-  const [currentPage] = useState('not');
+  const [currentPage, setCurrentPage] = useState('similar');
+
+  useEffect(() => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const currentUrl = tabs[0]?.url || '';
+      console.log("currentUrl", currentUrl);
+      setCurrentPage(currentUrl.includes('worldmarket.com') ? 'similar' : 'not');
+    });
+  }, []);
   const [preferences, setPreferences] = useState({
     notifyExactMatches: true,
     notifySimilarMatches: true,

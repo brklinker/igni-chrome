@@ -3,7 +3,12 @@
     "name": "Igni",
     "version": "1.0.0",
     "description": "A shopping assistant.",
-    "permissions": ["contextMenus", "activeTab", "scripting", "storage"],
+    "icons": {
+      "16": "icons/igni-mascot.png",
+      "48": "icons/igni-mascot.png",
+      "128": "icons/igni-mascot.png"
+    },
+    "permissions": ["contextMenus", "activeTab", "scripting", "storage", "tabs"],
     "background": {
       "service_worker": "background.js",
       "type": "module"
@@ -13,6 +18,11 @@
       "https://www.google.com/*"
     ],
     "action": {
+      "default_icon": {
+        "16": "icons/igni-mascot.png",
+        "48": "icons/igni-mascot.png",
+        "128": "icons/igni-mascot.png"
+      },
       "default_popup": "index.html"
     },
     "web_accessible_resources": [{
