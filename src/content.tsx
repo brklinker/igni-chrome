@@ -10,7 +10,7 @@ console.log('Content script loaded!');
 
 interface ProductData {
   title: string;
-  price: string;
+  price: number;
   productLink: string;
   img: string;
   inStock?: boolean;
@@ -20,11 +20,13 @@ interface ProductData {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.debug('Content script received message:', request);
 
-  if (request.action === "getProductImage") {
+  if (request.action === "getProductInfo") {
     try {
-      const imageUrl = findProductImage();
-      console.info('Found product image:', imageUrl);
-      sendResponse({ imageUrl });
+      const { imageUrl, productName, productPrice } = findProductInfo();
+      console.info('Found the product info', imageUrl, productName, productPrice);
+
+      sendResponse({ imageUrl, productName, productPrice });
+
     } catch (error) {
       console.error('Error finding product image:', error instanceof Error ? error : new Error(String(error)));
       sendResponse({ error: error instanceof Error ? error.message : String(error) });
@@ -33,7 +35,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return true;
 });
 
-function findProductImage(): string | null {
+function findProductInfo(): { imageUrl: string | null; productName: string | null; productPrice: number | null } {
   console.debug('Searching for product image');
   // Try different common selectors for product images
   const selectors = [
@@ -55,6 +57,18 @@ function findProductImage(): string | null {
     '#product-title',
     '#product-name'
   ];
+  const priceSelectors = [
+    '[itemprop="price"]',
+    '[class*="product-price"]',
+    '[id*="product-price"]',
+    '.price',
+    '#price',
+    '.current-price',
+    '.sale-price',
+    '[data-price]',
+    '[data-product-price]'
+  ];
+
 
   let productName = null;
   for (const selector of nameSelectors) {
@@ -87,11 +101,39 @@ function findProductImage(): string | null {
     }
   }
 
+  let productPrice = null;
+  for (const selector of priceSelectors) {
+    const priceElement = document.querySelector(selector);
+    if (priceElement) {
+      // Get all text nodes within the element
+      const walker = document.createTreeWalker(
+        priceElement,
+        NodeFilter.SHOW_TEXT,
+        null
+      );
+
+      // Check each text node until we find a valid price
+      let node;
+      while ((node = walker.nextNode())) {
+        const priceText = node.textContent?.trim() || '';
+        if (priceText) {
+          const numericPrice = extractPriceValue(priceText);
+          if (numericPrice) {
+            productPrice = numericPrice;
+            break;
+          }
+        }
+      }
+      
+      if (productPrice) break; // Exit outer loop if price found
+    }
+  }
+
   if (!imageUrl) {
     console.warn('No product image found on page');
   }
   
-  return imageUrl;
+  return { imageUrl, productName, productPrice };
 }
 
 // Content script for Google Lens results page
@@ -102,11 +144,12 @@ const isGoogleLensPage = () => {
 };
 
 // Helper function to extract numeric price value
-function extractPriceValue(priceString: string): string {
+function extractPriceValue(priceString: string): number | null {
   // Remove all non-numeric characters except decimal point
   const numericPrice = priceString.replace(/[^0-9.]/g, '');
-  // Return empty string if no valid number found
-  return numericPrice || '';
+  // Convert to number or return null if invalid
+  const price = parseFloat(numericPrice);
+  return isNaN(price) ? null : price;
 }
 
 if (isGoogleLensPage()) {

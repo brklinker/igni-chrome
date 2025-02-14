@@ -78,7 +78,7 @@ function App() {
   useEffect(() => {
     logger.debug('Loading cached products');
     
-    chrome.storage.local.get(['cachedProducts', 'lastUpdated'], (result) => {
+    chrome.storage.local.get(['cachedProducts', 'lastUpdated', 'sourcePrice'], (result) => {
       if (chrome.runtime.lastError) {
         logger.error('Error reading from storage:', chrome.runtime.lastError);
         return;
@@ -88,13 +88,19 @@ function App() {
         logger.warn('No cached products found');
         return;
       }
+      const sourcePrice = result.sourcePrice;
+      logger.debug('Source price:', sourcePrice);
+
+      if (!sourcePrice) {
+        logger.warn('No source price found');
+      }
 
       try {
         const formattedProducts = result.cachedProducts.map((product: ProductData) => ({
           name: product.title,
           store: new URL(product.productLink).hostname,
-          price: parseFloat(product.price.replace('$', '')),
-          savings: 0,
+          price: product.price,
+          savings: sourcePrice ? sourcePrice - product.price : 0,
           matchPercentage: 100,
           link: product.productLink
         }));
@@ -116,18 +122,26 @@ function App() {
     ) => {
       if (message.action === "imageSearchComplete" && message.data) {
         console.log("message.data", message.data);
-        // Format and update similar products
-        const formattedProducts = message.data.map((product: ProductData) => ({
-          name: product.title,
-          store: new URL(product.productLink).hostname,
-          price: parseFloat(product.price.replace('$', '')),
-          savings: 0,
-          matchPercentage: 100,
-          link: product.productLink
-        }));
         
-        setSimilarProducts(formattedProducts);
-        sendResponse({ success: true });
+        // Get the source price from storage
+        chrome.storage.local.get(['sourcePrice'], (result) => {
+          const sourcePrice = result.sourcePrice;
+          
+          // Format and update similar products
+          const formattedProducts = message.data.map((product: ProductData) => ({
+            name: product.title,
+            store: new URL(product.productLink).hostname,
+            price: product.price,
+            savings: sourcePrice ? sourcePrice - product.price : 0,
+            matchPercentage: 100,
+            link: product.productLink
+          }));
+          
+          setSimilarProducts(formattedProducts);
+          sendResponse({ success: true });
+        });
+        
+        return true; // Required for async sendResponse
       }
     };
 

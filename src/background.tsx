@@ -1,6 +1,6 @@
 import { isProductPage } from './utils/urlParser';
 import { logger } from './utils/logger';
-import { ProductData } from './types';
+import { ProductData, RelatedProductsResult } from './types';
 
 chrome.runtime.onInstalled.addListener(() => {
     // Create new menu item
@@ -29,11 +29,12 @@ chrome.webNavigation.onCompleted.addListener((details) => {
       if (isProductPage(tab.url)) {
         logger.info('Product page detected:', tab.url);
         getRelatedProducts(details.tabId)
-          .then(async products => {
-            logger.info(`Found ${products.length} related products`);
-            const topProducts = await findTopProducts(products);
+          .then(async result => {
+            logger.info(`Found ${result.products.length} related products`);
+            logger.info('Source price:', result.sourcePrice);
             chrome.storage.local.set({ 
-              cachedProducts: topProducts,
+              cachedProducts: result.products,
+              sourcePrice: result.sourcePrice,
               lastUpdated: Date.now()
             }, () => {
               if (chrome.runtime.lastError) {
@@ -41,7 +42,7 @@ chrome.webNavigation.onCompleted.addListener((details) => {
                 return;
               }
               logger.debug('Products cached successfully');
-              updateBadge(products.length);
+              updateBadge(result.products.length);
             });
           })
           .catch(error => {
@@ -62,7 +63,8 @@ chrome.contextMenus.onClicked.addListener(async (info: chrome.contextMenus.OnCli
   if (info.menuItemId === "searchProductImage" && info.srcUrl) {
     const imageUrl: string = info.srcUrl;
     const results = await handleImageSearch(imageUrl);
-    const topProducts = await findTopProducts(results.data);
+    //would need to get the product price from the product page
+    const topProducts = await findTopProducts(results.data, 500);
     // Send results to any listening services
     chrome.runtime.sendMessage({
       action: "imageSearchComplete",
@@ -80,11 +82,13 @@ function updateBadge(count: number) {
   }
 }
 
-async function getRelatedProducts(tabId: number): Promise<ProductData[]> {
+async function getRelatedProducts(tabId: number): Promise<RelatedProductsResult> {
   logger.info(`Getting related products for tab ${tabId}`);
   
   try {
-    const imageUrl = await getProductImage(tabId);
+    const productInfo = await getProductInfo(tabId);
+    const imageUrl = productInfo.imageUrl;
+    const productPrice = productInfo.productPrice;
     if (!imageUrl) {
       const error = new Error('No product image found on the page');
       logger.error('Product image fetch failed', error);
@@ -95,10 +99,12 @@ async function getRelatedProducts(tabId: number): Promise<ProductData[]> {
     const results = await handleImageSearch(imageUrl);
     
     logger.info(`Found ${results.data.length} products before filtering`);
-    const topProducts = await findTopProducts(results.data);
+    const topProducts = await findTopProducts(results.data, productPrice);
     logger.info(`Filtered down to ${topProducts.length} top products`);
-    return topProducts;
-
+    return {
+      products: topProducts,
+      sourcePrice: productPrice
+    };
   } catch (error) {
     logger.error('Error in getRelatedProducts:', error);
     throw error;
@@ -135,26 +141,30 @@ async function handleImageSearch(imageUrl: string): Promise<{ data: ProductData[
   return { data: results as ProductData[] };
 }
 
-export async function findTopProducts(productData: ProductData[]): Promise<ProductData[]> {
-  // Filter products under $500
-  const filteredProducts = productData.filter(product => {
-    // Remove '$' and convert to number
-    const price = parseFloat(product.price.replace('$', ''));
-    return !isNaN(price) && price < 500;
+export async function findTopProducts(productData: ProductData[], productPrice: number | null): Promise<ProductData[]> {
+  const maxPrice = productPrice || 500;
+  const topProducts: ProductData[] = [];
+  productData.forEach(product => {
+    if (product.price < maxPrice) {
+      topProducts.push(product);
+    }
   });
 
-  // Return top 3 products
-  return filteredProducts.slice(0, 3);
+  return topProducts.slice(0, 3);
 }
 
-async function getProductImage(tabId: number): Promise<string> {
+async function getProductInfo(tabId: number): Promise<{ 
+  imageUrl: string | null; 
+  productName: string | null; 
+  productPrice: number | null; 
+}> {
   return new Promise((resolve, reject) => {
-    chrome.tabs.sendMessage(tabId, { action: "getProductImage" }, (response) => {
+    chrome.tabs.sendMessage(tabId, { action: "getProductInfo" }, (response) => {
       if (chrome.runtime.lastError) {
         reject(chrome.runtime.lastError);
         return;
       }
-      resolve(response.imageUrl);
+      resolve(response);
     });
   });
 } 

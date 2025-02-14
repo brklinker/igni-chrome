@@ -1,6 +1,6 @@
 export interface ProductData {
   title: string;
-  price: string;
+  price: number;
   productLink: string;
   img: string;
   inStock?: boolean;
@@ -15,4 +15,9 @@ export interface Product {
   manufacturer?: string;
   verifiedSeller?: boolean;
   link: string;
+}
+
+export interface RelatedProductsResult {
+  products: ProductData[];
+  sourcePrice: number | null;
 } 
