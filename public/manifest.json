@@ -8,7 +8,7 @@
       "48": "icons/igni-mascot.png",
       "128": "icons/igni-mascot.png"
     },
-    "permissions": ["contextMenus", "activeTab", "scripting", "storage", "tabs"],
+    "permissions": ["contextMenus", "activeTab", "scripting", "storage", "tabs", "webNavigation"],
     "background": {
       "service_worker": "background.js",
       "type": "module"
@@ -25,6 +25,13 @@
       },
       "default_popup": "index.html"
     },
+    "content_scripts": [
+      {
+        "matches": ["<all_urls>"],
+        "js": ["content.js"],
+        "type": "module"
+      }
+    ],
     "web_accessible_resources": [{
       "resources": ["content.js"],
       "matches": ["<all_urls>"]

@@ -6,6 +6,7 @@ interface Product {
   savings: number;
   matchPercentage: number;
   verifiedSeller?: boolean;
+  link: string;
 }
 
 interface Preferences {
@@ -61,9 +62,14 @@ export function SimilarProductsPage({
                 <div className="text-sm text-green-600">Save ${product.savings.toFixed(2)}</div>
               </div>
             </div>
-            <button className="w-full bg-orange-500 text-white py-2 rounded hover:bg-orange-600 transition-colors text-sm mt-2">
+            <a 
+              href={product.link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block w-full bg-orange-500 text-white py-2 rounded hover:bg-orange-600 transition-colors text-sm mt-2 text-center"
+            >
               View Item
-            </button>
+            </a>
           </div>
         ))}
       </div>

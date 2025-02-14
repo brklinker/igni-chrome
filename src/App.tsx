@@ -1,70 +1,35 @@
 import { useState, useEffect } from 'react'
 import { SimilarProductsPage } from './components/SimilarProductsPage';
 import { ComparisonPage } from './components/ComparisonPage';
-
-// interface ProductData {
-//   title: string;
-//   price: string;
-//   productLink: string;
-//   img: string;
-// }
-
+import type { Product, ProductData } from './types';
+import { logger } from './utils/logger';
 
 function App() {
-  const [currentPage, setCurrentPage] = useState('similar');
+  const [currentPage] = useState('similar');
 
-  useEffect(() => {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      const currentUrl = tabs[0]?.url || '';
-      console.log("currentUrl", currentUrl);
-      setCurrentPage(currentUrl.includes('worldmarket.com') ? 'similar' : 'not');
-    });
-  }, []);
   const [preferences, setPreferences] = useState({
     notifyExactMatches: true,
     notifySimilarMatches: true,
     showPriceHistory: false
   });
 
-  // useEffect(() => {
-  //   // Check if we're in a Chrome extension environment
-  //   if (!chrome?.runtime?.onMessage) {
-  //     console.warn('Chrome extension APIs not available');
-  //     return;
-  //   }
-
-  //   // Define the message handler
-  //   const messageHandler = (message: any) => {
-  //     console.log("In App.tsx, listener for message", message);
-  //     if (message.action === "sendProductData") {
-  //       setProducts(message.data);
-  //     }
-  //   };
-
-  //   // Add listener
-  //   chrome.runtime.onMessage.addListener(messageHandler);
-
-  //   // Cleanup listener on unmount
-  //   return () => {
-  //     chrome.runtime.onMessage.removeListener(messageHandler);
-  //   };
-  // }, []);
-
-  const [similarProducts] = useState([
+  const [similarProducts, setSimilarProducts] = useState<Product[]>([
     {
       name: 'Misty Boucle Accent Chair',
       store: 'TOV Furniture',
       manufacturer: 'Manufacturer',
       price: 649.99,
       savings: 200.00,
-      matchPercentage: 100
+      matchPercentage: 100,
+      link: ''
     },
     {
       name: 'Tov Furniture Misty Cream Boucle Accent Chair',
       store: 'Amazon',
       price: 669.99,
       savings: 180.00,
-      matchPercentage: 100
+      matchPercentage: 100,
+      link: ''
     },
     {
       name: 'AllModern Vivi Leather',
@@ -72,7 +37,8 @@ function App() {
       verifiedSeller: true,
       price: 659.99,
       savings: 190.00,
-      matchPercentage: 77
+      matchPercentage: 77,
+      link: ''
     }
   ]);
   const [currentSaaS] = useState({
@@ -108,20 +74,69 @@ function App() {
     ]
   });
 
+  // Handle cached products on page load
   useEffect(() => {
-    // Check if we're in a Chrome extension environment
-    if (chrome?.runtime?.sendMessage) {
-      try {
-        chrome.runtime.sendMessage({ 
-          action: "newMatches", 
-          count: similarProducts.length,
-          data: similarProducts 
-        });
-      } catch (error) {
-        console.error('Failed to send message:', error);
+    logger.debug('Loading cached products');
+    
+    chrome.storage.local.get(['cachedProducts', 'lastUpdated'], (result) => {
+      if (chrome.runtime.lastError) {
+        logger.error('Error reading from storage:', chrome.runtime.lastError);
+        return;
       }
-    }
-  }, [similarProducts]);
+
+      if (!result.cachedProducts) {
+        logger.warn('No cached products found');
+        return;
+      }
+
+      try {
+        const formattedProducts = result.cachedProducts.map((product: ProductData) => ({
+          name: product.title,
+          store: new URL(product.productLink).hostname,
+          price: parseFloat(product.price.replace('$', '')),
+          savings: 0,
+          matchPercentage: 100,
+          link: product.productLink
+        }));
+        logger.info(`Formatted ${formattedProducts.length} products`);
+        setSimilarProducts(formattedProducts);
+      } catch (error) {
+        logger.error('Error formatting products:', error as Error);
+      }
+    });
+  }, []);
+
+
+  // Handle context menu search results
+  useEffect(() => {
+    const messageListener = async (
+      message: any,
+      sender: chrome.runtime.MessageSender,
+      sendResponse: (response: any) => void
+    ) => {
+      if (message.action === "imageSearchComplete" && message.data) {
+        console.log("message.data", message.data);
+        // Format and update similar products
+        const formattedProducts = message.data.map((product: ProductData) => ({
+          name: product.title,
+          store: new URL(product.productLink).hostname,
+          price: parseFloat(product.price.replace('$', '')),
+          savings: 0,
+          matchPercentage: 100,
+          link: product.productLink
+        }));
+        
+        setSimilarProducts(formattedProducts);
+        sendResponse({ success: true });
+      }
+    };
+
+    chrome.runtime.onMessage.addListener(messageListener);
+    
+    return () => {
+      chrome.runtime.onMessage.removeListener(messageListener);
+    };
+  }, []);
 
   return (
     <div className="w-[400px] h-[500px] bg-white text-gray-800">
