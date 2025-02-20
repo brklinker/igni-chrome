@@ -74,61 +74,25 @@ function App() {
     ]
   });
 
-  // Handle cached products on page load
   useEffect(() => {
-    logger.debug('Loading cached products');
+    logger.debug('Setting up product update listener');
+
+    // Let background know popup is open and ready for data
+    chrome.runtime.sendMessage({ action: "popupOpened" });
     
-    chrome.storage.local.get(['cachedProducts', 'lastUpdated', 'sourcePrice'], (result) => {
-      if (chrome.runtime.lastError) {
-        logger.error('Error reading from storage:', chrome.runtime.lastError);
-        return;
-      }
-
-      if (!result.cachedProducts) {
-        logger.warn('No cached products found');
-        return;
-      }
-      const sourcePrice = result.sourcePrice;
-      logger.debug('Source price:', sourcePrice);
-
-      if (!sourcePrice) {
-        logger.warn('No source price found');
-      }
-
-      try {
-        const formattedProducts = result.cachedProducts.map((product: ProductData) => ({
-          name: product.title,
-          store: new URL(product.productLink).hostname,
-          price: product.price,
-          savings: sourcePrice ? sourcePrice - product.price : 0,
-          matchPercentage: 100,
-          link: product.productLink
-        }));
-        logger.info(`Formatted ${formattedProducts.length} products`);
-        setSimilarProducts(formattedProducts);
-      } catch (error) {
-        logger.error('Error formatting products:', error as Error);
-      }
-    });
-  }, []);
-
-
-  // Handle context menu search results
-  useEffect(() => {
-    const messageListener = async (
-      message: any,
-      sender: chrome.runtime.MessageSender,
-      sendResponse: (response: any) => void
-    ) => {
-      if (message.action === "imageSearchComplete" && message.data) {
-        console.log("message.data", message.data);
+    // Listen for product updates
+    const messageListener = (message: any) => {
+      if (message.action === "tabProductsUpdate") {
+        const { products, sourcePrice } = message.data;
         
-        // Get the source price from storage
-        chrome.storage.local.get(['sourcePrice'], (result) => {
-          const sourcePrice = result.sourcePrice;
-          
-          // Format and update similar products
-          const formattedProducts = message.data.map((product: ProductData) => ({
+        if (!products.length) {
+          logger.warn('No products available for this tab');
+          setSimilarProducts([]);
+          return;
+        }
+
+        try {
+          const formattedProducts = products.map((product: ProductData) => ({
             name: product.title,
             store: new URL(product.productLink).hostname,
             price: product.price,
@@ -136,12 +100,11 @@ function App() {
             matchPercentage: 100,
             link: product.productLink
           }));
-          
+          logger.info(`Formatted ${formattedProducts.length} products`);
           setSimilarProducts(formattedProducts);
-          sendResponse({ success: true });
-        });
-        
-        return true; // Required for async sendResponse
+        } catch (error) {
+          logger.error('Error formatting products:', error as Error);
+        }
       }
     };
 

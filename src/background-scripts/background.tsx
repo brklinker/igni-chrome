@@ -1,6 +1,6 @@
-import { isProductPage } from './utils/urlParser';
-import { logger } from './utils/logger';
-import { ProductData, RelatedProductsResult } from './types';
+import { isProductPage } from '../utils/urlParser';
+import { logger } from '../utils/logger';
+import { ProductData, RelatedProductsResult } from '../types';
 
 chrome.runtime.onInstalled.addListener(() => {
     // Create new menu item
@@ -13,6 +13,7 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.webNavigation.onCompleted.addListener((details) => {
   logger.debug('Navigation completed', details);
+  updateBadge(0);
   
   if (details.frameId === 0) {
     chrome.tabs.get(details.tabId, (tab) => {
@@ -32,16 +33,22 @@ chrome.webNavigation.onCompleted.addListener((details) => {
           .then(async result => {
             logger.info(`Found ${result.products.length} related products`);
             logger.info('Source price:', result.sourcePrice);
+            
+            // Store data with tab ID as key
+            const storageKey = `tab_${details.tabId}`;
             chrome.storage.local.set({ 
-              cachedProducts: result.products,
-              sourcePrice: result.sourcePrice,
-              lastUpdated: Date.now()
+              [storageKey]: {
+                products: result.products,
+                sourcePrice: result.sourcePrice,
+                lastUpdated: Date.now(),
+                url: tab.url
+              }
             }, () => {
               if (chrome.runtime.lastError) {
                 logger.error('Error saving to storage:', chrome.runtime.lastError);
                 return;
               }
-              logger.debug('Products cached successfully');
+              logger.debug('Products cached successfully for tab:', details.tabId);
               updateBadge(result.products.length);
             });
           })
@@ -73,6 +80,60 @@ chrome.contextMenus.onClicked.addListener(async (info: chrome.contextMenus.OnCli
   }
 });
 
+// Centralized function to load and handle tab data
+function handleTabData(tabId: number) {
+  const storageKey = `tab_${tabId}`;
+  
+  chrome.storage.local.get([storageKey], (result) => {
+    const tabData = result[storageKey];
+    if (!tabData?.products) {
+      updateBadge(0);
+      // Notify App.tsx that there are no products for this tab
+      chrome.runtime.sendMessage({
+        action: "tabProductsUpdate",
+        data: {
+          products: [],
+          sourcePrice: null
+        }
+      });
+      return;
+    }
+    
+    updateBadge(tabData.products.length);
+    // Notify App.tsx of the products for this tab
+    chrome.runtime.sendMessage({
+      action: "tabProductsUpdate",
+      data: {
+        products: tabData.products,
+        sourcePrice: tabData.sourcePrice
+      }
+    });
+  });
+}
+
+// Tab activation listener
+chrome.tabs.onActivated.addListener((activeInfo) => {
+  handleTabData(activeInfo.tabId);
+});
+
+// Tab update listener
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'complete') {
+    handleTabData(tabId);
+  }
+});
+
+// When popup opens, send current tab's data
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === "popupOpened") {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]?.id) {
+        handleTabData(tabs[0].id);
+      }
+    });
+  }
+});
+
 function updateBadge(count: number) {
   if (count > 0) {
     chrome.action.setBadgeText({ text: count.toString() });
@@ -87,7 +148,7 @@ async function getRelatedProducts(tabId: number): Promise<RelatedProductsResult>
   
   try {
     const productInfo = await getProductInfo(tabId);
-    const imageUrl = productInfo.imageUrl;
+    const imageUrl = productInfo.productImageUrl;
     const productPrice = productInfo.productPrice;
     if (!imageUrl) {
       const error = new Error('No product image found on the page');
@@ -112,16 +173,16 @@ async function getRelatedProducts(tabId: number): Promise<RelatedProductsResult>
 }
 
 async function handleImageSearch(imageUrl: string): Promise<{ data: ProductData[] }> {
-  // 1. Create a hidden tab with Google Lens
+  // 1. Create a hidden tab with Google Lens with exact match parameter
   const searchTab = await chrome.tabs.create({ 
-    url: `https://lens.google.com/uploadbyurl?url=${encodeURIComponent(imageUrl)}`,
-    active: false // Keep tab hidden from user
+    url: `https://lens.google.com/uploadbyurl?url=${encodeURIComponent(imageUrl)}&ep=match`,
+    active: false // Doesn't move user to new tab
   });
 
   // 2. Inject content script to parse results
   await chrome.scripting.executeScript({
     target: { tabId: searchTab.id! },
-    files: ["content.js"]
+    files: ["googleLensContent.js"]
   });
 
   // 3. Wait for results from content script
@@ -130,7 +191,7 @@ async function handleImageSearch(imageUrl: string): Promise<{ data: ProductData[
       if (message.action === "searchResults" && sender.tab?.id === searchTab.id) {
         chrome.runtime.onMessage.removeListener(listener);
         // Close the search tab
-        chrome.tabs.remove(searchTab.id!);
+        // chrome.tabs.remove(searchTab.id!);
         resolve(message.data);
       }
     };
@@ -154,7 +215,7 @@ export async function findTopProducts(productData: ProductData[], productPrice: 
 }
 
 async function getProductInfo(tabId: number): Promise<{ 
-  imageUrl: string | null; 
+  productImageUrl: string | null; 
   productName: string | null; 
   productPrice: number | null; 
 }> {

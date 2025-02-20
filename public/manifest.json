@@ -30,6 +30,11 @@
         "matches": ["<all_urls>"],
         "js": ["content.js"],
         "type": "module"
+      },
+      {
+        "matches": ["*://lens.google.com/*", "*://www.google.com/search*"],
+        "js": ["googleLensContent.js"],
+        "type": "module"
       }
     ],
     "web_accessible_resources": [{

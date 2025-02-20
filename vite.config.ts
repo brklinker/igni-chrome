@@ -19,11 +19,16 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: './index.html',
-        background: './src/background.tsx',
-        content: './src/content.tsx',
+        background: './src/background-scripts/background.tsx',
+        content: './src/content-scripts/content-main.tsx',
+        googleLensContent: './src/content-scripts/google-lens.tsx'
       },
       output: {
-        entryFileNames: '[name].js',
+        entryFileNames: (chunkInfo) => {
+          // Remove the content-scripts/ prefix and .tsx extension
+          const name = chunkInfo.name.replace('content-scripts/', '').replace('.tsx', '');
+          return `${name}.js`;
+        },
       }
     },
   },
